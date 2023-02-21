@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include "/users/askagarw/unreliablefs/unreliablefs/client.h"
 
 #include <sys/ioctl.h>
 #include <sys/file.h>
@@ -72,6 +73,52 @@ const char *fuse_op_name[] = {
 
 extern int error_inject(const char* path, fuse_op operation);
 
+const char* CLIENT_CACHE_DIR = "/users/askagarw/ClientCache/";
+
+
+
+void log(char *path, char* str)
+{
+    FILE *logFile;
+    logFile = fopen(path, "a");
+    if (logFile == NULL)
+    {
+        perror("Error opening logFile");
+        return 1;
+    }
+
+    fprintf(logFile, str);
+    fprintf(logFile, "\n");
+    fclose(logFile);
+}
+
+void GetClientFilePath(char* path, char* clientFilePath) {
+    remove_prefix(path);
+    strcpy(clientFilePath, CLIENT_CACHE_DIR);
+    strcat(clientFilePath, path);
+}
+
+void remove_prefix(char *str)
+{   
+    char prefix[]  = "/tmp/";
+    int prefix_len = strlen(prefix);
+    int str_len = strlen(str);
+
+    int i;
+
+    if (str_len < prefix_len)
+    {
+        return;
+    }
+
+    for (i = 0; i < str_len - prefix_len; i++)
+    {
+        str[i] = str[i + prefix_len];
+    }
+
+    str[i] = '\0';
+}
+
 int unreliable_lstat(const char *path, struct stat *buf)
 {
     int ret = error_inject(path, OP_LSTAT);
@@ -81,28 +128,29 @@ int unreliable_lstat(const char *path, struct stat *buf)
         return ret;
     }
 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
     memset(buf, 0, sizeof(struct stat));
-    if (lstat(path, buf) == -1) {
+    if (lstat(clientFilePath, buf) == -1) {
         return -errno;
     }
 
     return 0;
 }
 
+
+
 int unreliable_getattr(const char *path, struct stat *buf)
 {
-    int ret = error_inject(path, OP_GETATTR);
-    if (ret == -ERRNO_NOOP) {
-        return 0;
-    } else if (ret) {
-        return ret;
+    // fetches attributes from client cache. If file does not exist in cache get it from server
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    if (lstat(clientFilePath, buf) == -1) {
+        // get from server
+        int ret = getAttributeFromServer(path, buf);
+        if (ret < 0) return ret;
     }
-
-    memset(buf, 0, sizeof(struct stat));
-    if (lstat(path, buf) == -1) {
-        return -errno;
-    }
-
+    
     return 0;
 }
 
@@ -115,7 +163,9 @@ int unreliable_readlink(const char *path, char *buf, size_t bufsiz)
         return ret;
     }
 
-    ret = readlink(path, buf, bufsiz);
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = readlink(clientFilePath, buf, bufsiz);
     if (ret == -1) {
         return -errno;
     }
@@ -133,7 +183,9 @@ int unreliable_mknod(const char *path, mode_t mode, dev_t dev)
         return ret;
     }
 
-    ret = mknod(path, mode, dev);    
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = mknod(clientFilePath, mode, dev);    
     if (ret == -1) {
         return -errno;
     }
@@ -150,7 +202,14 @@ int unreliable_mkdir(const char *path, mode_t mode)
         return ret;
     }
 
-    ret = mkdir(path, mode);
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    int err = makeDir(path, mode);
+    if (err != 0)
+        return err;
+
+    ret = mkdir(clientFilePath, mode);
     if (ret == -1) {
         return -errno;
     }
@@ -167,7 +226,9 @@ int unreliable_unlink(const char *path)
         return ret;
     }
 
-    ret = unlink(path); 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = unlink(clientFilePath); 
     if (ret == -1) {
         return -errno;
     }
@@ -184,7 +245,9 @@ int unreliable_rmdir(const char *path)
         return ret;
     }
 
-    ret = rmdir(path); 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = rmdir(clientFilePath); 
     if (ret == -1) {
         return -errno;
     }
@@ -286,7 +349,9 @@ int unreliable_truncate(const char *path, off_t length)
         return ret;
     }
 
-    ret = truncate(path, length); 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = truncate(clientFilePath, length); 
     if (ret == -1) {
         return -errno;
     }
@@ -294,21 +359,43 @@ int unreliable_truncate(const char *path, off_t length)
     return 0;
 }
 
+
+
 int unreliable_open(const char *path, struct fuse_file_info *fi)
 {
-    int ret = error_inject(path, OP_OPEN);
-    if (ret == -ERRNO_NOOP) {
-        return 0;
-    } else if (ret) {
-        return ret;
+    char* logFile = "/tmp/logOpen";
+    log(logFile, "open was called");
+
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    struct stat serverStats;
+    struct stat clientStats;
+
+    int serverRc = getAttributeFromServer(path, &serverStats);
+    int cacheRc = lstat(clientFilePath, &clientStats);
+
+    if (serverRc < 0) {
+        // means file does not exist on server
+        // Code should never reach here as FUSE filters out the create flag and calls the creat system call
+        
+        log (logFile, "The file requsted was not found on the server");
+
+        // check if files exists in client open client copy
+
+        // if doesnt exist in client return error
+        return -2;
+    }
+    
+    if (cacheRc == -1 || serverStats.st_mtim.tv_sec > clientStats.st_mtim.tv_sec) {
+        downloadFileFromServer(path); // also creates the file in client cache.
     }
 
-    ret = open(path, fi->flags);
-    if (ret == -1) {
+    int openRc = open(clientFilePath, fi->flags);
+    if (openRc == -1) {
         return -errno;
     }
-    fi->fh = ret;
-
+    fi->fh = openRc;
     return 0;
 }
 
@@ -427,6 +514,12 @@ int unreliable_release(const char *path, struct fuse_file_info *fi)
     if (ret == -1) {
         return -errno;
     }
+
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = uploadFileToServer(path);
+    if (ret < 0)
+        return ret;
 
     return 0;    
 }
@@ -662,7 +755,10 @@ int unreliable_access(const char *path, int mode)
         return ret;
     }
 
-    ret = access(path, mode); 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    ret = access(clientFilePath, mode); 
     if (ret == -1) {
         return -errno;
     }
@@ -680,7 +776,10 @@ int unreliable_create(const char *path, mode_t mode,
         return ret;
     }
 
-    ret = open(path, fi->flags, mode);
+
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    ret = open(clientFilePath, fi->flags, 777);
     if (ret == -1) {
         return -errno;
     }

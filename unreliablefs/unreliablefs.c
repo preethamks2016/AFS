@@ -12,6 +12,7 @@
 
 #include "unreliablefs_ops.h"
 #include "unreliablefs.h"
+#include "client.h"
 
 extern struct err_inj_q *config_init(const char* conf_path);
 extern void config_delete(struct err_inj_q *config);
@@ -173,6 +174,9 @@ int main(int argc, char *argv[])
         perror("pthread_mutex_init");
         return EXIT_FAILURE;
     }
+
+    fprintf(stdout, "initiating channel with server\n");
+    initClient();
 
     fprintf(stdout, "starting FUSE filesystem unreliablefs\n");
     int ret = fuse_main(args.argc, args.argv, &unreliable_ops, NULL);

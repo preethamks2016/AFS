@@ -1,0 +1,4 @@
+sudo umount /tmp/afs
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
+unreliablefs /tmp/afs -basedir=/tmp -seed=16186 -d
