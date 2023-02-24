@@ -1,6 +1,7 @@
 #include <grpcpp/grpcpp.h>
 #include <string>
 #include <fstream>
+#include "string.h"
 #include "afsgrpc.grpc.pb.h"
 #include <fcntl.h>
 
@@ -16,7 +17,10 @@ using afsgrpc::AttributeReply;
 using afsgrpc::MakeDirRequest;
 using afsgrpc::CreateReply;
 using afsgrpc::UploadRequest;
+using afsgrpc::ReadDirReply;
 using afsgrpc::FileService;
+using afsgrpc::UnlinkRequest;
+using afsgrpc::UnlinkReply;
 
 using namespace std;
 
@@ -78,6 +82,31 @@ class FileServiceClient {
     }
   }
 
+
+  std::int32_t sendRequestForUnlink(std::string path, int type) {
+    // Data to be sent to server
+    UnlinkRequest unlnkReq;
+    unlnkReq.set_path(path);
+    unlnkReq.set_type(type);
+
+    UnlinkReply unlnkReply;
+
+    // Context can be used to send meta data to server or modify RPC behaviour
+    ClientContext context;
+
+    // Actual Remote Procedure Call
+    Status status = stub_->Unlink(&context, unlnkReq, &unlnkReply);
+
+    // Returns results based on RPC status
+    if (status.ok()) {
+      return unlnkReply.err();
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
   int UploadFileToServer(string filePath, string content) {
     UploadRequest request;
     request.set_file_data(content);
@@ -124,6 +153,34 @@ class FileServiceClient {
     }
   }
 
+  int readDirectoryFromServer(string filePath, char* dNames[], struct stat *dEntries, int *size) {
+    FileRequest request;
+    ReadDirReply reply;
+    ClientContext context;
+
+    request.set_file_path(filePath);
+    Status status = stub_->ReadDir(&context, request, &reply);
+    if (status.ok()) {
+      if (reply.err() < 0)
+        return reply.err();
+      *size = reply.inodenumber().size();
+      for (int i = 0; i < reply.inodenumber().size(); i++) {
+        memset(dEntries + i, 0, sizeof(dEntries[i]));
+        dEntries[i].st_ino = reply.inodenumber().Get(i);
+	      dEntries[i].st_mode = reply.type().Get(i) << 12;
+	      const char* name = reply.name().Get(i).c_str();
+        dNames[i] = (char*)malloc(strlen(name)+1);
+        strcpy(dNames[i], name);
+      }
+
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
  private:
   std::unique_ptr<FileService::Stub> stub_;
 };
@@ -163,13 +220,19 @@ extern "C" int makeDir(char path[], int mode) {
     return response;
 }
 
-extern "C" int readDir(char path[]) {
-    std::int32_t response = 0;
 
-    string dirPathTemp(path); // conversion to string
-    //response = client.sendRequestForMkdir(dirPathTemp);
+extern "C" int unlnk(char path[], int type) {
+    std::int32_t response;
+
+    string newPath(path); // conversion to string
+    response = client.sendRequestForUnlink(newPath, type);
 
     return response;
+}
+
+extern "C" int readDir(char path[], char* dNames[], struct stat *dEntries, int *size) {
+    string dirPathTemp(path); // conversion to string
+    return client.readDirectoryFromServer(dirPathTemp, dNames, dEntries, size);
 }
 
 extern "C" int uploadFileToServer(char filePath[]) {

@@ -27,6 +27,7 @@ service FileService {
   rpc MakeDir (MakeDirRequest) returns (CreateReply) {}
   rpc UploadFile(UploadRequest) returns (CreateReply) {}
   rpc ReadDir(FileRequest) returns (ReadDirReply) {}
+  rpc Unlink(UnlinkRequest) returns (UnlinkReply) {}
 }
 
 message FileRequest {
@@ -79,4 +80,13 @@ message ReadDirReply {
   repeated int32 type = 2;
   repeated string name = 3;
   int32 err = 4;
+}
+
+message UnlinkRequest {
+  string path = 1;
+  int32 type = 2;
+}
+
+message UnlinkReply {
+  int32 err = 1;
 }

@@ -26,12 +26,16 @@ int uploadFileToServer(char filePath[]);
 #ifdef __cplusplus
 extern "C"
 #endif
-int readDir(char filePath[]);
+int readDir(char filePath[], char* dNames[], struct stat *dEntries, int *size);
 
 #ifdef __cplusplus
 extern "C"
 #endif
 void initClient();
 
+#ifdef __cplusplus
+extern "C"
+#endif
+int unlnk(char path[], int type);
 
 

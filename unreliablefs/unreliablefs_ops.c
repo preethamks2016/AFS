@@ -228,6 +228,13 @@ int unreliable_unlink(const char *path)
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
+
+    int type = 1; // to differentiate betwen file/dir
+    int err = unlnk(path, type); // delete in server
+    if (err != 0)
+        return err;
+
+    //system call to delete in client
     ret = unlink(clientFilePath); 
     if (ret == -1) {
         return -errno;
@@ -375,19 +382,14 @@ int unreliable_open(const char *path, struct fuse_file_info *fi)
     int serverRc = getAttributeFromServer(path, &serverStats);
     int cacheRc = lstat(clientFilePath, &clientStats);
 
-    if (serverRc < 0) {
+    if (serverRc < 0 && cacheRc < 0) {
         // means file does not exist on server
         // Code should never reach here as FUSE filters out the create flag and calls the creat system call
-        
         log (logFile, "The file requsted was not found on the server");
-
-        // check if files exists in client open client copy
-
-        // if doesnt exist in client return error
         return -2;
     }
     
-    if (cacheRc == -1 || serverStats.st_mtim.tv_sec > clientStats.st_mtim.tv_sec) {
+    if (cacheRc < 0 || serverStats.st_mtim.tv_sec > clientStats.st_mtim.tv_sec) {
         downloadFileFromServer(path); // also creates the file in client cache.
     }
 
@@ -510,16 +512,16 @@ int unreliable_release(const char *path, struct fuse_file_info *fi)
         return ret;
     }
 
-    ret = close(fi->fh);
-    if (ret == -1) {
-        return -errno;
-    }
-
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
     ret = uploadFileToServer(path);
     if (ret < 0)
         return ret;
+
+    ret = close(fi->fh);
+    if (ret == -1) {
+        return -errno;
+    }
 
     return 0;    
 }
@@ -665,24 +667,41 @@ int unreliable_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         return ret;
     }
 
-    DIR *dp = opendir(path);
-    if (dp == NULL) {
-	return -errno;
-    }
-    struct dirent *de;
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    char *dNames[100];
+    struct stat dEntries[100];
+    int size = 0;
+    ret = readDir(path, dNames, dEntries, &size);
+    if (ret < 0) return ret;
 
-    (void) offset;
-    (void) fi;
-
-    while ((de = readdir(dp)) != NULL) {
-        struct stat st;
-        memset(&st, 0, sizeof(st));
-        st.st_ino = de->d_ino;
-        st.st_mode = de->d_type << 12;
-        if (filler(buf, de->d_name, &st, 0))
+    for (int i = 0; i < size; i++) {
+        if (filler(buf, dNames[i], &dEntries[i], 0))
             break;
     }
-    closedir(dp);
+
+    for (int i = 0; i < size; i++) {
+        free(dNames[i]);
+    }
+
+    // DIR *dp = opendir(path);
+    // if (dp == NULL) {
+	// return -errno;
+    // }
+    // struct dirent *de;
+
+    // (void) offset;
+    // (void) fi;
+
+    // while ((de = readdir(dp)) != NULL) {
+    //     struct stat st;
+    //     memset(&st, 0, sizeof(st));
+    //     st.st_ino = de->d_ino;
+    //     st.st_mode = de->d_type << 12;
+    //     if (filler(buf, de->d_name, &st, 0))
+    //         break;
+    // }
+    // closedir(dp);
 
     return 0;
 }

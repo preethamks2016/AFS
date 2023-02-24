@@ -23,6 +23,8 @@ using afsgrpc::CreateReply;
 using afsgrpc::MakeDirRequest;
 using afsgrpc::ReadDirReply;
 using afsgrpc::FileService;
+using afsgrpc::UnlinkRequest;
+using afsgrpc::UnlinkReply;
 
 using namespace std;
 
@@ -105,6 +107,28 @@ class FileServiceImplementation final : public FileService::Service {
     }
     else {
       cout << "Directory created\n";
+      reply->set_err(0);
+    }
+
+    return Status::OK;
+  }
+
+
+  Status Unlink(ServerContext* context, const UnlinkRequest* request,
+                     UnlinkReply* reply) override {
+    // Obtains the original string from the request
+    std::string path = request->path();
+    int type = request->type();
+    string serverPath = BASE_DIR  + path;
+    cout<<"Delete Request Received for: " + serverPath<<std::endl;
+
+    // Creating a directory
+    if (unlink(serverPath.c_str()) == -1) {
+        cerr << "Error : " << strerror(errno) << endl;
+        reply->set_err(-errno);
+    }
+    else {
+      cout << "File/Directory removed\n";
       reply->set_err(0);
     }
 
