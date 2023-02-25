@@ -22,10 +22,10 @@ option objc_class_prefix = "AfsG";
 package afsgrpc;
 
 service FileService {
-  rpc DownloadFile (FileRequest) returns (FileReply) {}
+  rpc DownloadFile (FileRequest) returns (stream FileReply) {}
   rpc GetAttribute (FileRequest) returns (AttributeReply) {}
   rpc MakeDir (MakeDirRequest) returns (CreateReply) {}
-  rpc UploadFile(UploadRequest) returns (CreateReply) {}
+  rpc UploadFile(stream UploadRequest) returns (CreateReply) {}
   rpc ReadDir(FileRequest) returns (ReadDirReply) {}
   rpc Unlink(UnlinkRequest) returns (UnlinkReply) {}
 }
@@ -35,8 +35,7 @@ message FileRequest {
 }
 
 message FileReply {
-  string file_data = 1;
-  int32 err = 2;
+  bytes file_data = 1;
 }
 
 message AttributeReply {
@@ -62,7 +61,7 @@ message MakeDirRequest {
 }
 
 message UploadRequest {
-  string file_data = 1;
+  bytes file_data = 1;
   string file_path = 2;
 }
 

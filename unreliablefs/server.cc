@@ -1,4 +1,6 @@
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/completion_queue.h>
+#include <grpcpp/impl/codegen/status_code_enum.h>
 #include <string>
 #include <fstream>
 #include <sys/stat.h>
@@ -14,6 +16,9 @@ using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
+using grpc::StatusCode;
+using grpc::ServerWriter;
+using grpc::ServerReader;
 
 using afsgrpc::FileReply;
 using afsgrpc::FileRequest;
@@ -33,32 +38,33 @@ const string BASE_DIR = "/users/askagarw/filestore/";
 // Server Implementation
 class FileServiceImplementation final : public FileService::Service {
   Status DownloadFile(ServerContext* context, const FileRequest* request,
-                     FileReply* reply) override {
+                     ServerWriter<FileReply>* writer) override {
     // Obtains the original string from the request
     std::string filePath = request->file_path();
     string serverFilePath = BASE_DIR  + filePath; 
     cout<<"File Request Received for: " + serverFilePath<<std::endl;
 
     // TODO : Read file from local filesystem
-    ifstream file(serverFilePath);
+    ifstream file(serverFilePath, std::ifstream::binary);
+    if (!file) {
+      return Status(StatusCode::NOT_FOUND, "File not found");
+    }
 
     // Check if the file was successfully opened
     if (!file.is_open()) {
-      cout << "Error opening file" << endl;
-      return Status::OK;
+      return Status(StatusCode::INTERNAL, "Unable to open file");
     }
 
-    // Read the entire file into a string
-    string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+    const int chunk_size = 1024;
+    char buffer[chunk_size];
+    
+    while (!file.eof()) {
+      file.read(buffer, chunk_size);
+      FileReply response;
+      response.set_file_data(buffer, file.gcount());
+      writer->Write(response);
+    }
 
-    // Close the file
-    file.close();
-
-    // Print the contents of the file
-    cout << content << endl;
-
-
-    reply->set_file_data(content);
     return Status::OK;
   }
 
@@ -135,25 +141,29 @@ class FileServiceImplementation final : public FileService::Service {
     return Status::OK;
   }
 
-  Status UploadFile(ServerContext* context, const UploadRequest* request,
+  Status UploadFile(ServerContext* context, ServerReader<UploadRequest>* reader,
                      CreateReply* reply) override {
-    // Obtains the original string from the request
-    std::string filePath = request->file_path();
-    string fileData = request->file_data();
 
+    UploadRequest chunk;
+    // Read 1st chunk
+    reader->Read(&chunk);
+    string filePath = chunk.file_path();
     string serverFilePath = BASE_DIR  + filePath;
     cout<<"Upload File Request Received for: " + serverFilePath<<std::endl;
-
-    ofstream file(serverFilePath);
-    if (!file.is_open()) {
+    std::ofstream outfile(serverFilePath, std::ofstream::binary);
+    if (!outfile.is_open()) {
       cout << "Error opening file" << endl;
       reply->set_err(-errno);
       return Status::OK;
     }
 
-    // Write the string to the file
-    file << fileData;
-    file.close();
+    outfile.write(chunk.file_data().c_str(), chunk.file_data().size());
+    while (reader->Read(&chunk)) {
+      outfile.write(chunk.file_data().c_str(), chunk.file_data().size());
+    }
+
+    outfile.close();
+
     reply->set_err(0);
     return Status::OK;
   }

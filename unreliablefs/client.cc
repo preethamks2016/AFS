@@ -1,4 +1,7 @@
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/completion_queue.h>
+#include <grpcpp/impl/codegen/status_code_enum.h>
 #include <string>
 #include <fstream>
 #include "string.h"
@@ -10,6 +13,8 @@
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
+using grpc::ClientReader;
+using grpc::ClientWriter;
 
 using afsgrpc::FileReply;
 using afsgrpc::FileRequest;
@@ -34,28 +39,54 @@ class FileServiceClient {
   }
 
   // Assembles client payload, sends it to the server, and returns its response
-  std::string sendRequest(std::string file_name) {
+  int downloadFile(std::string file_name) {
     // Data to be sent to server
     FileRequest request;
+    ClientContext context;
     request.set_file_path(file_name);
 
-    // Container for server response
-    FileReply reply;
+    std::unique_ptr<ClientReader<FileReply>> reader(stub_->DownloadFile(&context, request));
+    FileReply response;
 
-    // Context can be used to send meta data to server or modify RPC behaviour
-    ClientContext context;
+    string filePathToWrite = BASE_DIR + file_name;
+    std::ofstream local_file(filePathToWrite, std::ofstream::binary);
 
-    // Actual Remote Procedure Call
-    Status status = stub_->DownloadFile(&context, request, &reply);
-
-    // Returns results based on RPC status
-    if (status.ok()) {
-      return reply.file_data();
-    } else {
-      std::cout << status.error_code() << ": " << status.error_message()
-                << std::endl;
-      return "RPC Failed";
+    if (!local_file) {
+      std::cerr << "Failed to open local file " << file_name << std::endl;
+      return -1;
     }
+
+    while (reader->Read(&response)) {
+      local_file.write(response.file_data().data(), response.file_data().size());
+    }
+
+    Status status = reader->Finish();
+    if (!status.ok()) {
+      std::cerr << "Failed to download file: " << status.error_message() << std::endl;
+      local_file.close();
+      std::remove(filePathToWrite.c_str());  // Remove the incomplete local file
+      return -1;
+    }
+
+    return 0;
+
+    // // Container for server response
+    // FileReply reply;
+
+    // // Context can be used to send meta data to server or modify RPC behaviour
+    // ClientContext context;
+
+    // // Actual Remote Procedure Call
+    // Status status = stub_->DownloadFile(&context, request, &reply);
+
+    // // Returns results based on RPC status
+    // if (status.ok()) {
+    //   return reply.file_data();
+    // } else {
+    //   std::cout << status.error_code() << ": " << status.error_message()
+    //             << std::endl;
+    //   return "RPC Failed";
+    // }
   }
 
   std::int32_t sendRequestForMkdir(std::string dir_path, int mode) {
@@ -107,20 +138,47 @@ class FileServiceClient {
     }
   }
 
-  int UploadFileToServer(string filePath, string content) {
-    UploadRequest request;
-    request.set_file_data(content);
-    request.set_file_path(filePath);
+  int UploadFileToServer(string filePath) {
+
+    string clientFilePath = BASE_DIR + filePath;
+    ifstream infile(clientFilePath, std::ifstream::binary);
+    if (!infile.is_open()) {
+      cerr<< "Couldnt open file";
+      return -errno;
+    }
+
     CreateReply reply;
     ClientContext context;
-    Status status = stub_->UploadFile(&context, request, &reply);
-    if (status.ok()) {
-      return reply.err();
-    } else {
-      std::cout << status.error_code() << ": " << status.error_message()
-                << std::endl;
-      return -1;
+    std::unique_ptr<ClientWriter<UploadRequest>> writer(stub_->UploadFile(&context, &reply));
+
+    const int CHUNK_SIZE = 1024;
+    char buffer[CHUNK_SIZE];
+    int bytes_read;
+
+    while ((bytes_read = infile.read(buffer, CHUNK_SIZE).gcount()) > 0) {
+      UploadRequest chunk;
+      chunk.set_file_data(buffer, bytes_read);
+      chunk.set_file_path(filePath);
+      writer->Write(chunk);
     }
+
+    writer->WritesDone();
+    Status status = writer->Finish();
+    return status.ok();
+
+    // UploadRequest request;
+    // request.set_file_data(content);
+    // request.set_file_path(filePath);
+    // CreateReply reply;
+    // ClientContext context;
+    // Status status = stub_->UploadFile(&context, request, &reply);
+    // if (status.ok()) {
+    //   return reply.err();
+    // } else {
+    //   std::cout << status.error_code() << ": " << status.error_message()
+    //             << std::endl;
+    //   return -1;
+    // }
   }
 
   int GetAttributeFromServer(char filePath[], struct stat *stbuf) {
@@ -186,25 +244,9 @@ class FileServiceClient {
 };
 
 extern "C" int downloadFileFromServer(char filePath[]) {
-    std::string response;
-
     // RPC is created and response is stored
     string filePathTemp(filePath);
-    response = client.sendRequest(filePathTemp);
-
-    // Write it to filepath
-    string filePathToWrite = BASE_DIR + filePathTemp;
-    ofstream file(filePathToWrite);
-    if (!file.is_open()) {
-      cout << "Error opening file" << endl;
-      return -errno;
-    }
-
-    // Write the string to the file
-    file << response;
-    file.close();
-
-    return 0;
+    return client.downloadFile(filePathTemp);
 }
 
 extern "C" int getAttributeFromServer(char filePath[], struct stat *stbuf) {
@@ -237,22 +279,23 @@ extern "C" int readDir(char path[], char* dNames[], struct stat *dEntries, int *
 
 extern "C" int uploadFileToServer(char filePath[]) {
   string path(filePath);
+  return client.UploadFileToServer(path);
 
-  string clientFilePath = BASE_DIR + path;
-  ifstream file(clientFilePath);
+  // string clientFilePath = BASE_DIR + path;
+  // ifstream file(clientFilePath);
 
-  // Check if the file was successfully opened
-  if (!file.is_open()) {
-    cout << "Error opening file" << endl;
-    return -errno;
-  }
+  // // Check if the file was successfully opened
+  // if (!file.is_open()) {
+  //   cout << "Error opening file" << endl;
+  //   return -errno;
+  // }
 
-  // Read the entire file into a string
-  string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
+  // // Read the entire file into a string
+  // string content((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
 
-  // Close the file
-  file.close();
-  return client.UploadFileToServer(path, content);
+  // // Close the file
+  // file.close();
+  // return client.UploadFileToServer(path, content);
 }
 
 extern "C" void initClient() {

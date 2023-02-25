@@ -514,9 +514,11 @@ int unreliable_release(const char *path, struct fuse_file_info *fi)
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    ret = uploadFileToServer(path);
-    if (ret < 0)
-        return ret;
+    if (fi->flags % 2) {
+        ret = uploadFileToServer(path);
+        if (ret < 0)
+            return ret;
+    }
 
     ret = close(fi->fh);
     if (ret == -1) {
