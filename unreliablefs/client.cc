@@ -29,7 +29,7 @@ using afsgrpc::UnlinkReply;
 
 using namespace std;
 
-const string BASE_DIR = "/users/askagarw/ClientCache/";
+const string BASE_DIR = "/users/askagarw/ClientCache";
 
 class FileServiceClient {
  public:
