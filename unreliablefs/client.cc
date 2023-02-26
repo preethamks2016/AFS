@@ -308,7 +308,7 @@ extern "C" int uploadFileToServer(char filePath[]) {
 
 extern "C" void initClient() {
 
-    std::string target_address("127.0.0.1:50051");
+    std::string target_address("10.10.1.5:50051");
     std::shared_ptr<Channel> channel = grpc::CreateChannel(target_address,
                           // Indicate when channel is not authenticated
                           grpc::InsecureChannelCredentials());

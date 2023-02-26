@@ -278,6 +278,9 @@ int unreliable_symlink(const char *target, const char *linkpath)
         return ret;
     }
 
+    log("/tmp/logSymlink", target);
+    log("/tmp/logSymlink", linkpath);
+
     ret = symlink(target, linkpath);
     if (ret == -1) {
         return -errno;
@@ -525,11 +528,11 @@ int unreliable_release(const char *path, struct fuse_file_info *fi)
     
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    //if (fi->flags % 2) {
+    if ((fi->flags % 4) != 0) { 
         ret = uploadFileToServer(path);
         if (ret < 0)
             return ret;
-    //}
+    }
 
     ret = close(fi->fh);
     if (ret == -1) {
@@ -691,8 +694,8 @@ int unreliable_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    char *dNames[100];
-    struct stat dEntries[100];
+    char *dNames[5000];
+    struct stat dEntries[5000];
     int size = 0;
     ret = readDir(path, dNames, dEntries, &size);
     if (ret < 0) return ret;

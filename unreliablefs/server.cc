@@ -156,7 +156,6 @@ class FileServiceImplementation final : public FileService::Service {
     // Read 1st chunk
     reader->Read(&chunk);
     string filePath = chunk.file_path();
-    cout<<"File path received "<< chunk.file_data()<<endl;
     string serverFilePath = BASE_DIR  + filePath;
     cout<<"Upload File Request Received for: " + serverFilePath<<std::endl;
     std::ofstream outfile(serverFilePath, std::ofstream::binary);
