@@ -114,7 +114,7 @@ def start_another_client(host: str, test_case: int, client_id: str,
     signal_exists = (not poll_signal_remove(host, signal_fname))
     assert signal_exists
     script_name = f'/scripts/test{test_case}_client{client_id.upper()}.py'
-    ssh_cmd = f'source ~/739p1.env && python {script_name}'
+    ssh_cmd = f'bash -c "source ~/739p1.env && python {script_name}"'
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     username = getpass.getuser()
@@ -124,11 +124,13 @@ def start_another_client(host: str, test_case: int, client_id: str,
     assert username is not None
     sshkey_fname = f'{home_dir}/.ssh/id_rsa'
     print(f'Connect {username}@{host}')
+    print(ssh_cmd)
     client.connect(hostname=host, username=username, key_filename=sshkey_fname)
     stdin, stdout, stderr = client.exec_command(ssh_cmd)
+    print(stdout.readlines())
     # useful when connection init has issues
     #print(stdout.readlines())
-    #print(stderr.readlines())
+    print(stderr.readlines())
     #client.close()
     #print(ssh_cmd)
 

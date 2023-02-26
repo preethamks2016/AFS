@@ -42,6 +42,7 @@ def run_test():
 
     # time for client_b to work, host_b should read the all-zero file
     cur_signal_name = next(signal_name_gen)
+    print("start client")
     fs_util.start_another_client(host_b, 1, 'B', cur_signal_name)
 
     # wait until client_b finish

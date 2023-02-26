@@ -52,7 +52,7 @@ class FileServiceClient {
     std::ofstream local_file(filePathToWrite, std::ofstream::binary);
 
     if (!local_file) {
-      std::cerr << "Failed to open local file " << file_name << std::endl;
+      std::cerr << "Failed to open local file " << filePathToWrite << std::endl;
       return -1;
     }
 

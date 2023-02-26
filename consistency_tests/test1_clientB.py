@@ -11,7 +11,6 @@ This is ClientB.
 
 def run_test():
     signal_name_gen = fs_util.get_fs_signal_name()
-
     cur_signal_name = next(signal_name_gen)
     fs_util.record_test_result(test1.TEST_CASE_NO, 'B',
                                f'START fname:{test1.FNAME}')
