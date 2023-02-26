@@ -139,7 +139,6 @@ class FileServiceClient {
   }
 
   int UploadFileToServer(string filePath) {
-
     string clientFilePath = BASE_DIR + filePath;
     ifstream infile(clientFilePath, std::ifstream::binary);
     if (!infile.is_open()) {
@@ -151,13 +150,22 @@ class FileServiceClient {
     ClientContext context;
     std::unique_ptr<ClientWriter<UploadRequest>> writer(stub_->UploadFile(&context, &reply));
 
-    const int CHUNK_SIZE = 1024;
+    const int CHUNK_SIZE = 4096;
     char buffer[CHUNK_SIZE];
     int bytes_read;
 
+    bool happenedOnce = false;
     while ((bytes_read = infile.read(buffer, CHUNK_SIZE).gcount()) > 0) {
+      happenedOnce = true;
       UploadRequest chunk;
       chunk.set_file_data(buffer, bytes_read);
+      chunk.set_file_path(filePath);
+      writer->Write(chunk);
+    }
+
+    if (!happenedOnce) {
+      UploadRequest chunk;
+      cerr<< "Setting file path to :" << filePath<<endl;
       chunk.set_file_path(filePath);
       writer->Write(chunk);
     }
@@ -300,7 +308,7 @@ extern "C" int uploadFileToServer(char filePath[]) {
 
 extern "C" void initClient() {
 
-    std::string target_address("0.0.0.0:50051");
+    std::string target_address("127.0.0.1:50051");
     std::shared_ptr<Channel> channel = grpc::CreateChannel(target_address,
                           // Indicate when channel is not authenticated
                           grpc::InsecureChannelCredentials());

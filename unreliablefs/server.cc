@@ -33,7 +33,7 @@ using afsgrpc::UnlinkReply;
 
 using namespace std;
 
-const string BASE_DIR = "/users/askagarw/filestore/";
+const string BASE_DIR = "/users/askagarw/filestore";
 
 // Server Implementation
 class FileServiceImplementation final : public FileService::Service {
@@ -55,7 +55,7 @@ class FileServiceImplementation final : public FileService::Service {
       return Status(StatusCode::INTERNAL, "Unable to open file");
     }
 
-    const int chunk_size = 1024;
+    const int chunk_size = 4096;
     char buffer[chunk_size];
     
     while (!file.eof()) {
@@ -95,6 +95,8 @@ class FileServiceImplementation final : public FileService::Service {
     else res = 0;
     reply->set_res(res);
 
+    cout<<"Get Attribute Result Code : "<<res<<endl;
+
     return Status::OK;
   }
 
@@ -128,8 +130,14 @@ class FileServiceImplementation final : public FileService::Service {
     string serverPath = BASE_DIR  + path;
     cout<<"Delete Request Received for: " + serverPath<<std::endl;
 
-    // Creating a directory
-    if (unlink(serverPath.c_str()) == -1) {
+    // Delete file
+    int ret;
+    if (type == 1) {
+      ret = unlink(serverPath.c_str());
+    } else {
+      ret = rmdir(serverPath.c_str());
+    }
+    if (ret == -1) {
         cerr << "Error : " << strerror(errno) << endl;
         reply->set_err(-errno);
     }
@@ -148,6 +156,7 @@ class FileServiceImplementation final : public FileService::Service {
     // Read 1st chunk
     reader->Read(&chunk);
     string filePath = chunk.file_path();
+    cout<<"File path received "<< chunk.file_data()<<endl;
     string serverFilePath = BASE_DIR  + filePath;
     cout<<"Upload File Request Received for: " + serverFilePath<<std::endl;
     std::ofstream outfile(serverFilePath, std::ofstream::binary);

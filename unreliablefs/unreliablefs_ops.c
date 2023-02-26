@@ -100,7 +100,7 @@ void GetClientFilePath(char* path, char* clientFilePath) {
 
 void remove_prefix(char *str)
 {   
-    char prefix[]  = "/tmp/";
+    char prefix[]  = "users/askagarw/baseDir/";
     int prefix_len = strlen(prefix);
     int str_len = strlen(str);
 
@@ -185,7 +185,7 @@ int unreliable_mknod(const char *path, mode_t mode, dev_t dev)
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    ret = mknod(clientFilePath, mode, dev);    
+    ret = mknod(clientFilePath, 777, dev);    
     if (ret == -1) {
         return -errno;
     }
@@ -209,7 +209,7 @@ int unreliable_mkdir(const char *path, mode_t mode)
     if (err != 0)
         return err;
 
-    ret = mkdir(clientFilePath, mode);
+    ret = mkdir(clientFilePath, 0777);
     if (ret == -1) {
         return -errno;
     }
@@ -254,6 +254,13 @@ int unreliable_rmdir(const char *path)
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
+    
+    int type = 2; // to differentiate betwen file/dir
+    int err = unlnk(path, type); // delete in server
+    if (err != 0)
+        return err;
+
+    
     ret = rmdir(clientFilePath); 
     if (ret == -1) {
         return -errno;
@@ -478,7 +485,10 @@ int unreliable_statfs(const char *path, struct statvfs *buf)
         return ret;
     }
 
-    ret = statvfs(path, buf);
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    ret = statvfs(clientFilePath, buf);
     if (ret == -1) {
         return -errno;
     }
@@ -494,7 +504,7 @@ int unreliable_flush(const char *path, struct fuse_file_info *fi)
     } else if (ret) {
         return ret;
     }
-
+    
     ret = close(dup(fi->fh));
     if (ret == -1) {
         return -errno;
@@ -512,13 +522,14 @@ int unreliable_release(const char *path, struct fuse_file_info *fi)
         return ret;
     }
 
+    
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    if (fi->flags % 2) {
+    //if (fi->flags % 2) {
         ret = uploadFileToServer(path);
         if (ret < 0)
             return ret;
-    }
+    //}
 
     ret = close(fi->fh);
     if (ret == -1) {
@@ -563,10 +574,13 @@ int unreliable_setxattr(const char *path, const char *name,
         return ret;
     }
 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
 #ifdef __APPLE__
-    ret = setxattr(path, name, value, size, 0, flags);
+    ret = setxattr(clientFilePath, name, value, size, 0, flags);
 #else
-    ret = setxattr(path, name, value, size, flags);
+    ret = setxattr(clientFilePath, name, value, size, flags);
 #endif /* __APPLE__ */
     if (ret == -1) {
         return -errno;
@@ -585,10 +599,13 @@ int unreliable_getxattr(const char *path, const char *name,
         return ret;
     }
 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
 #ifdef __APPLE__
-    ret = getxattr(path, name, value, size, 0, XATTR_NOFOLLOW);
+    ret = getxattr(clientFilePath, name, value, size, 0, XATTR_NOFOLLOW);
 #else
-    ret = getxattr(path, name, value, size);
+    ret = getxattr(clientFilePath, name, value, size);
 #endif /* __APPLE__ */
     if (ret == -1) {
         return -errno;
@@ -649,7 +666,10 @@ int unreliable_opendir(const char *path, struct fuse_file_info *fi)
         return ret;
     }
 
-    DIR *dir = opendir(path);
+
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+    DIR *dir = opendir(clientFilePath);
 
     if (!dir) {
         return -errno;
@@ -736,7 +756,10 @@ int unreliable_fsyncdir(const char *path, int datasync, struct fuse_file_info *f
         return ret;
     }
 
-    DIR *dir = opendir(path);
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    DIR *dir = opendir(clientFilePath);
     if (!dir) {
         return -errno;
     }
@@ -800,7 +823,7 @@ int unreliable_create(const char *path, mode_t mode,
 
     char clientFilePath[100];
     GetClientFilePath(path, clientFilePath);
-    ret = open(clientFilePath, fi->flags, 777);
+    ret = open(clientFilePath, fi->flags, 0777);
     if (ret == -1) {
         return -errno;
     }
@@ -819,7 +842,10 @@ int unreliable_ftruncate(const char *path, off_t length,
         return ret;
     }
 
-    ret = truncate(path, length);
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
+    ret = truncate(clientFilePath, length);
     if (ret == -1) {
         return -errno;
     }
@@ -955,8 +981,11 @@ int unreliable_utimens(const char *path, const struct timespec ts[2])
         return ret;
     }
 
+    char clientFilePath[100];
+    GetClientFilePath(path, clientFilePath);
+
     /* don't use utime/utimes since they follow symlinks */
-    ret = utimensat(0, path, ts, AT_SYMLINK_NOFOLLOW);
+    ret = utimensat(0, clientFilePath, ts, AT_SYMLINK_NOFOLLOW);
     if (ret == -1) {
         return -errno;
     }

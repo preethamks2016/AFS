@@ -1,4 +1,4 @@
 sudo umount /tmp/afs
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/users/askagarw/.local
 cmake --build build --parallel
-unreliablefs /tmp/afs -basedir=/tmp -seed=16186 -d
+unreliablefs /tmp/afs -basedir=/users/askagarw/baseDir -seed=16186 -d
