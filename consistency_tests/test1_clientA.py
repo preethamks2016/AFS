@@ -38,13 +38,14 @@ def run_test():
     fs_util.write_file(fd, init_str)
     fs_util.close_file(fd)
     # open again
-    fd = fs_util.open_file(FNAME)
+    fd = fs_util.open_file(FNAME, os.O_RDONLY)
 
     # time for client_b to work, host_b should read the all-zero file
     cur_signal_name = next(signal_name_gen)
     print("start client")
     fs_util.start_another_client(host_b, 1, 'B', cur_signal_name)
 
+    print("Code here")
     # wait until client_b finish
     while True:
         removed = fs_util.poll_signal_remove(host_b, cur_signal_name)

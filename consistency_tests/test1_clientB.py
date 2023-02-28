@@ -45,7 +45,8 @@ def run_test():
     cur_signal_name = next(signal_name_gen)
     fs_util.wait_for_signal(cur_signal_name, last_signal_name=last_signal_name)
 
-    fd = fs_util.open_file(test1.FNAME)
+    sleep(5)
+    fd = fs_util.open_file(test1.FNAME, os.O_RDONLY)
     cur_str = fs_util.read_file(fd, 300)
     if len(cur_str) != 300:
         fs_util.record_test_result(test1.TEST_CASE_NO, 'B',
